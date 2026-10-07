@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Práctica 3 · Movimiento parabólico 3D</title>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--tx:#17324d;--mu:#5d7289;--ac:#1f6fb2;--bd:#d5dfea;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1822;--card:#17232f;--tx:#e6eef6;--mu:#93a7ba;--ac:#5fb0ef;--bd:#2a3b4b}}
+:root[data-theme="dark"]{--bg:#0f1822;--card:#17232f;--tx:#e6eef6;--mu:#93a7ba;--ac:#5fb0ef;--bd:#2a3b4b}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif}
+#v{position:relative;height:52vh;min-height:300px;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#hint{position:absolute;left:10px;bottom:8px;font-size:11px;color:var(--mu)}
+main{padding:10px 12px 24px;max-width:760px;margin:auto}
+h1{font-size:17px;margin:10px 12px 0}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.row{display:flex;align-items:center;gap:8px;margin:6px 0}.row label{flex:0 0 118px;color:var(--mu)}
+.row input[type=range]{flex:1;accent-color:var(--ac)}.row b{flex:0 0 74px;text-align:right;font-variant-numeric:tabular-nums}
+button,select{background:var(--ac);color:#fff;border:0;border-radius:8px;padding:7px 12px;font-size:13px}
+select{background:var(--card);color:var(--tx);border:1px solid var(--bd)}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}.g div{display:flex;justify-content:space-between;border-bottom:1px dashed var(--bd);padding:2px 0}
+.g span{color:var(--mu)}.g b{font-variant-numeric:tabular-nums}
+.lg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--mu)}.lg i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}
+small{color:var(--mu)}
+</style></head><body>
+<h1>Práctica 3 · Movimiento parabólico (balín)</h1>
+<div id="v"><canvas id="c"></canvas><div id="hint">Arrastra: girar · pellizca / rueda: zoom</div></div>
+<main>
+<div class="card">
+<div class="row"><button id="pl">Pausa</button><button id="rs" style="background:var(--card);color:var(--tx);border:1px solid var(--bd)">Valores del lab</button>
+<select id="ts"><option value="1">1×</option><option value=".2" selected>0.2×</option><option value=".05">0.05×</option></select></div>
+<div class="row"><label>v₀ (cm/s)</label><input id="v0" type="range" min="100" max="250" step=".1"><b id="v0o"></b></div>
+<div class="row"><label>α₀ (°)</label><input id="a" type="range" min="-5" max="20" step=".01"><b id="ao"></b></div>
+<div class="row"><label>g (cm/s²)</label><input id="g" type="range" min="900" max="1000" step=".5"><b id="go"></b></div>
+<div class="row"><label>Punto X (cm)</label><input id="x" type="range" min="1" max="40" step=".5"><b id="xo"></b></div>
+</div>
+<div class="card"><div class="g" id="out"></div></div>
+<div class="card lg"><span><i style="background:#ffb000"></i>punto X</span><span><i style="background:#e5484d"></i>y medio medido</span><span><i style="background:#3fb950"></i>velocidad</span><span><i style="background:#a371f7"></i>aₜ</span><span><i style="background:#ff7b72"></i>aₙ</span><span><i style="background:#58a6ff"></i>círculo osculador</span></div>
+<small>Modelo: y = x·tan α₀ − g·x² / (2v₀²cos²α₀), con los datos del laboratorio (A = −0.0196, B = 0.0392, C = −0.0252, v₀ = 157.9 cm/s, α₀ = 2.24°, g = 976 cm/s²). Las barras de error Δy se dibujan ×8 para que se vean.</small>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const D={v0:157.9,a:2.24,g:976,x:20},P={...D},S=.1,R=Math.PI/180;
+const X=[0,5,10,15,20,25,30,35,40],YN=[0,-.2,-1.35,-3.7,-6.9,-11,-16.05,-22.3,-29.4],YX=[0,-.55,-1.7,-4.1,-7.4,-11.5,-16.85,-23.2,-30.3];
+const $=i=>document.getElementById(i);
+const box=$('v'),cv=$('c'),ren=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
+ren.setPixelRatio(Math.min(devicePixelRatio,2));
+const sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(45,1,.1,100);
+sc.add(new THREE.AmbientLight(0xffffff,.7));const dl=new THREE.DirectionalLight(0xffffff,.8);dl.position.set(3,6,5);sc.add(dl);
+const mat=(c,o)=>new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.5},o||{}));
+// escenario
+const ramp=new THREE.Mesh(new THREE.BoxGeometry(1.6,.3,.8),mat(0x7a8794));ramp.position.set(-.8,-.27,0);sc.add(ramp);
+const paper=new THREE.Mesh(new THREE.BoxGeometry(5,.02,.8),mat(0x222a33));paper.position.set(2,-3.2,0);sc.add(paper);
+const gr=new THREE.GridHelper(6,12,0x8899aa,0x8899aa);gr.rotation.x=Math.PI/2;gr.position.set(2,-1.5,-.5);gr.material.transparent=true;gr.material.opacity=.35;sc.add(gr);
+sc.add(new THREE.AxesHelper(1));
+// datos experimentales
+const dg=new THREE.Group();sc.add(dg);
+X.forEach((x,i)=>{const m=(YN[i]+YX[i])/2,s=new THREE.Mesh(new THREE.SphereGeometry(.06,12,12),mat(0xe5484d));s.position.set(x*S,m*S,0);dg.add(s);
+const h=(YX[i]-YN[i])/2*8*S;dg.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x*S,m*S-h,0),new THREE.Vector3(x*S,m*S+h,0)]),new THREE.LineBasicMaterial({color:0xe5484d})))});
+// trayectoria
+const N=80,cg=new THREE.BufferGeometry();cg.setAttribute('position',new THREE.BufferAttribute(new Float32Array((N+1)*3),3));
+sc.add(new THREE.Line(cg,new THREE.LineBasicMaterial({color:0x1f9d8b})));
+const ball=new THREE.Mesh(new THREE.SphereGeometry(.12,20,20),mat(0xd0d6dc,{metalness:.8,roughness:.25}));sc.add(ball);
+const mk=new THREE.Mesh(new THREE.SphereGeometry(.07,12,12),mat(0xffb000,{emissive:0x553a00}));sc.add(mk);
+const arr=c=>{const a=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vector3(),1,c,.18,.1);sc.add(a);return a};
+const aV=arr(0x3fb950),aT=arr(0xa371f7),aN=arr(0xff7b72);
+const cc=new THREE.LineLoop(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0x58a6ff}));sc.add(cc);
+// cálculo
+function K(){const al=P.a*R,c=Math.cos(al);return{t:Math.tan(al),vx:P.v0*c,k:P.g/(P.v0*P.v0*c*c)}}
+const yf=(x,q)=>x*q.t-q.k*x*x/2,yp=(x,q)=>q.t-q.k*x;
+function arc(x,q){const n=200,h=x/n;let s=0;for(let i=0;i<=n;i++){const w=i==0||i==n?1:i%2?4:2;s+=w*Math.sqrt(1+yp(i*h,q)**2)}return s*h/3}
+function upd(){const q=K();
+ const p=cg.attributes.position;for(let i=0;i<=N;i++){const x=40*i/N;p.setXYZ(i,x*S,yf(x,q)*S,0)}p.needsUpdate=true;
+ const x=P.x,y=yf(x,q),s=yp(x,q),L=Math.hypot(1,s),T=new THREE.Vector3(1/L,s/L,0),Nn=new THREE.Vector3(s/L,-1/L,0);
+ const pt=new THREE.Vector3(x*S,y*S,0);mk.position.copy(pt);
+ const vy=q.vx*s,V=Math.hypot(q.vx,vy),phi=Math.atan(Math.abs(s)),at=P.g*Math.sin(phi)*(s<0?1:-1),an=P.g*Math.cos(phi),rho=Math.pow(1+s*s,1.5)/q.k;
+ const set=(a,d,len)=>{a.position.copy(pt);a.setDirection(d.clone().normalize());a.setLength(Math.max(Math.abs(len),.02),.18,.1)};
+ set(aV,new THREE.Vector3(q.vx,vy,0),V*.01);
+ set(aT,T.clone().multiplyScalar(Math.sign(at)||1),Math.abs(at)*.0015);
+ set(aN,Nn,an*.0015);
+ const ctr=pt.clone().add(Nn.clone().multiplyScalar(rho*S)),pts=[];for(let i=0;i<=96;i++){const a=i/96*2*Math.PI;pts.push(new THREE.Vector3(ctr.x+rho*S*Math.cos(a),ctr.y+rho*S*Math.sin(a),0))}
+ cc.geometry.setFromPoints(pts);
+ const f=(l,v,u)=>`<div><span>${l}</span><b>${v} ${u}</b></div>`;
+ $('out').innerHTML=f('A',(-q.k/2).toFixed(4),'cm⁻¹')+f('B',q.t.toFixed(4),'')+f('y(X)',y.toFixed(2),'cm')+f("y'(X)",s.toFixed(4),'')+f('ρ (radio curv.)',rho.toFixed(1),'cm')+f('v',V.toFixed(1),'cm/s')+f('vₓ / v_y',q.vx.toFixed(1)+' / '+vy.toFixed(1),'')+f('φ',(phi/R).toFixed(2),'°')+f('aₜ',Math.abs(at).toFixed(0),'cm/s²')+f('aₙ',an.toFixed(0),'cm/s²')+f('Distancia s',arc(x,q).toFixed(1),'cm')+f('Alcance a X=40',(40/q.vx).toFixed(3),'s');
+ [['v0','v0o',1,''],['a','ao',2,'°'],['g','go',1,''],['x','xo',1,'']].forEach(([k,o,d,u])=>{$(o).textContent=P[k].toFixed(d)+u})}
+['v0','a','g','x'].forEach(k=>{$(k).oninput=e=>{P[k]=+e.target.value;upd()}});
+function sync(){['v0','a','g','x'].forEach(k=>$(k).value=P[k]);upd()}
+$('rs').onclick=()=>{Object.assign(P,D);sync()};
+let run=true,t=0;$('pl').onclick=()=>{run=!run;$('pl').textContent=run?'Pausa':'Reanudar'};
+sync();
+// cámara orbital
+let th=.6,ph=1.3,rd=9;const tg=new THREE.Vector3(2,-1.5,0);
+function cm(){cam.position.set(tg.x+rd*Math.sin(ph)*Math.sin(th),tg.y+rd*Math.cos(ph),tg.z+rd*Math.sin(ph)*Math.cos(th));cam.lookAt(tg)}
+const ptr=new Map();let pd=0;
+cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);ptr.set(e.pointerId,[e.clientX,e.clientY])});
+cv.addEventListener('pointerup',e=>ptr.delete(e.pointerId));cv.addEventListener('pointercancel',e=>ptr.delete(e.pointerId));
+cv.addEventListener('pointermove',e=>{if(!ptr.has(e.pointerId))return;const o=ptr.get(e.pointerId);
+ if(ptr.size==1){th-=(e.clientX-o[0])*.008;ph=Math.min(3,Math.max(.2,ph-(e.clientY-o[1])*.008))}
+ ptr.set(e.pointerId,[e.clientX,e.clientY]);
+ if(ptr.size==2){const [a,b]=[...ptr.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1]);if(pd)rd=Math.min(25,Math.max(3,rd*pd/d));pd=d}else pd=0});
+cv.addEventListener('wheel',e=>{e.preventDefault();rd=Math.min(25,Math.max(3,rd*(1+e.deltaY*.001)))},{passive:false});
+function rs(){const w=box.clientWidth,h=box.clientHeight;ren.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
+new ResizeObserver(rs).observe(box);rs();
+let last=performance.now();
+function loop(n){const dt=(n-last)/1000;last=n;
+ if(run){const q=K(),T=40/q.vx;t+=dt*$('ts').value;if(t>T*1.15)t=0}
+ const q=K(),tt=Math.min(t,40/q.vx),x=q.vx*tt;ball.position.set(x*S,yf(x,q)*S,0);
+ cm();ren.render(sc,cam);requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+</script></body></html>
